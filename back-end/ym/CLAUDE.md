@@ -611,7 +611,7 @@ Claude가 실제 작업을 시작할 때는 아래 순서로 진행하는 것이
 
 1. Spring Boot 프로젝트 초기 세팅
 2. build.gradle 의존성 구성
-3. application.yml 설정
+3. application.properties 설정
 4. 엔티티 생성
 5. Repository 생성
 6. DTO 생성
