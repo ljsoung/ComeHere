@@ -634,3 +634,240 @@ Claude는 각 단계마다 현재 상태를 정리하면서 다음 단계로 넘
 - 내가 요청하지 않은 라이브러리를 임의로 추가하지 않는다.
 - 먼저 MVP를 완성하고, 이후 확장 기능을 제안한다.
 - DB 스키마와 API 설계가 충돌하면 반드시 먼저 이유를 설명한다.
+
+---
+
+## 프론트엔드 디렉터리 구조
+
+프론트엔드 프로젝트는 아래 구조를 기준으로 구성한다.
+
+```
+front-end/
+├── public/
+├── src/
+│   ├── api/              # Axios 인스턴스 및 API 호출 함수
+│   │   ├── axiosInstance.ts
+│   │   ├── authApi.ts
+│   │   ├── postApi.ts
+│   │   ├── applicationApi.ts
+│   │   ├── bookmarkApi.ts
+│   │   └── commentApi.ts
+│   ├── components/       # 재사용 가능한 공통 컴포넌트
+│   │   ├── common/
+│   │   │   ├── Header.tsx
+│   │   │   ├── Footer.tsx
+│   │   │   └── LoadingSpinner.tsx
+│   │   ├── post/
+│   │   │   ├── PostCard.tsx
+│   │   │   └── PostFilterBar.tsx
+│   │   └── comment/
+│   │       └── CommentItem.tsx
+│   ├── pages/            # 라우트 단위 페이지 컴포넌트
+│   │   ├── HomePage.tsx
+│   │   ├── LoginPage.tsx
+│   │   ├── SignUpPage.tsx
+│   │   ├── PostListPage.tsx
+│   │   ├── PostDetailPage.tsx
+│   │   ├── PostWritePage.tsx
+│   │   ├── PostEditPage.tsx
+│   │   └── mypage/
+│   │       ├── MyPage.tsx
+│   │       ├── MyPostsPage.tsx
+│   │       ├── MyApplicationsPage.tsx
+│   │       └── MyBookmarksPage.tsx
+│   ├── hooks/            # 커스텀 훅
+│   │   ├── useAuth.ts
+│   │   └── usePostFilter.ts
+│   ├── store/            # 전역 상태 (zustand)
+│   │   └── authStore.ts
+│   ├── types/            # TypeScript 타입 정의
+│   │   ├── user.ts
+│   │   ├── post.ts
+│   │   ├── application.ts
+│   │   ├── bookmark.ts
+│   │   └── comment.ts
+│   ├── utils/            # 날짜 포맷, 유효성 검사 등 유틸 함수
+│   │   └── formatDate.ts
+│   ├── router/           # react-router-dom 라우트 설정
+│   │   └── AppRouter.tsx
+│   ├── App.tsx
+│   └── main.tsx
+├── index.html
+├── vite.config.ts
+├── tsconfig.json
+└── package.json
+```
+
+---
+
+## 프론트엔드 TypeScript 타입 정의
+
+백엔드 API 응답과 1:1로 대응하는 타입을 `src/types/` 디렉터리에 정의한다.
+
+### user.ts
+```ts
+export interface User {
+  id: number;
+  email: string;
+  nickname: string;
+  university: string;
+  major: string;
+  bio?: string;
+  githubUrl?: string;
+  portfolioUrl?: string;
+  role: 'USER' | 'ADMIN';
+}
+```
+
+### post.ts
+```ts
+export type PostCategory = 'CONTEST' | 'GRADUATION_PROJECT' | 'TEAM_PROJECT' | 'STUDY' | 'HACKATHON' | 'ETC';
+export type MeetingType = 'ONLINE' | 'OFFLINE' | 'HYBRID';
+export type PostStatus = 'OPEN' | 'CLOSED';
+
+export interface Post {
+  id: number;
+  authorId: number;
+  authorNickname: string;
+  title: string;
+  content: string;
+  category: PostCategory;
+  recruitmentCount: number;
+  period: string;
+  deadline: string;
+  meetingType: MeetingType;
+  status: PostStatus;
+  viewCount: number;
+  stacks: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### application.ts
+```ts
+export type ApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED';
+
+export interface Application {
+  id: number;
+  postId: number;
+  postTitle: string;
+  applicantId: number;
+  applicantNickname: string;
+  message?: string;
+  status: ApplicationStatus;
+  createdAt: string;
+}
+```
+
+---
+
+## 프론트엔드 API 연동 원칙
+
+### Axios 인스턴스
+- `src/api/axiosInstance.ts`에 baseURL과 인터셉터를 설정한다.
+- 요청 인터셉터에서 JWT 토큰을 Authorization 헤더에 자동 첨부한다.
+- 응답 인터셉터에서 401 발생 시 로그아웃 처리한다.
+- baseURL은 환경변수 `VITE_API_BASE_URL`로 관리한다.
+
+```ts
+// 예시
+const axiosInstance = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+});
+axiosInstance.interceptors.request.use((config) => {
+  const token = localStorage.getItem('accessToken');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+```
+
+### TanStack Query 사용 원칙
+- 서버 데이터 조회는 `useQuery`를 사용한다.
+- 데이터 변경(생성/수정/삭제)은 `useMutation`을 사용한다.
+- queryKey는 도메인과 식별자를 조합해 명확하게 작성한다.
+    - 예: `['posts', postId]`, `['posts', 'list', filters]`
+- mutation 성공 후 관련 queryKey를 `invalidateQueries`로 무효화한다.
+
+### 인증 토큰 관리
+- JWT accessToken은 `localStorage`에 저장한다.
+- 로그아웃 시 `localStorage`에서 토큰을 제거한다.
+- 로그인 상태는 `authStore`에서 관리한다.
+
+---
+
+## 프론트엔드 Figma 연동 원칙
+
+디자인 작업은 Figma를 사용한다. Claude는 아래 원칙을 따른다.
+
+1. Figma 디자인이 제공되면 해당 디자인을 최우선 기준으로 삼는다.
+2. Figma에서 지정된 색상, 타이포그래피, 간격을 MUI 테마에 반영한다.
+3. MUI 컴포넌트를 기본으로 사용하되, Figma 디자인과 맞지 않는 부분은 `sx` prop 또는 `styled()`로 커스터마이징한다.
+4. Figma에서 컴포넌트 이름이 지정된 경우 해당 이름을 React 컴포넌트명 기준으로 삼는다.
+5. 디자인이 없는 상태에서는 MUI 기본 스타일을 사용하고, Figma가 확정된 후 적용한다.
+
+---
+
+## 프론트엔드 컴포넌트 작성 원칙
+
+1. 페이지 단위 컴포넌트는 `pages/`에, 재사용 가능한 컴포넌트는 `components/`에 배치한다.
+2. 컴포넌트 파일명은 PascalCase를 사용한다. (예: `PostCard.tsx`)
+3. props 타입은 인터페이스로 명시한다.
+    ```ts
+    interface PostCardProps {
+      post: Post;
+      onBookmark?: (postId: number) => void;
+    }
+    ```
+4. 한 파일에 하나의 컴포넌트를 원칙으로 한다.
+5. 비즈니스 로직은 커스텀 훅으로 분리한다.
+6. 인라인 스타일은 사용하지 않고 MUI `sx` prop 또는 `styled()`를 사용한다.
+
+---
+
+## 프론트엔드 라우팅 구조
+
+`react-router-dom v6` 기준으로 구성한다.
+
+| 경로 | 페이지 | 인증 필요 여부 |
+| --- | --- | --- |
+| `/` | 홈 | 불필요 |
+| `/login` | 로그인 | 불필요 |
+| `/signup` | 회원가입 | 불필요 |
+| `/posts` | 모집글 목록 | 불필요 |
+| `/posts/:id` | 모집글 상세 | 불필요 |
+| `/posts/write` | 모집글 작성 | 필요 |
+| `/posts/:id/edit` | 모집글 수정 | 필요 (작성자 본인) |
+| `/mypage` | 마이페이지 | 필요 |
+| `/mypage/posts` | 내가 쓴 글 | 필요 |
+| `/mypage/applications` | 내 지원 내역 | 필요 |
+| `/mypage/bookmarks` | 내 북마크 | 필요 |
+
+- 인증이 필요한 페이지는 `PrivateRoute` 컴포넌트로 보호한다.
+- 비로그인 상태로 접근 시 `/login`으로 리다이렉트한다.
+
+---
+
+## 프론트엔드 환경변수
+
+`.env` 파일을 프로젝트 루트에 생성하고 아래 항목을 관리한다.
+
+```
+VITE_API_BASE_URL=http://localhost:8080
+```
+
+- 운영 환경에서는 실제 서버 주소로 변경한다.
+- `.env` 파일은 `.gitignore`에 추가해 커밋하지 않는다.
+- `.env.example` 파일을 커밋해 팀원이 구조를 파악할 수 있게 한다.
+
+---
+
+## 프론트엔드 코드 작성 스타일
+
+1. `any` 타입 사용을 금지한다. 반드시 명확한 타입을 정의한다.
+2. API 응답 타입은 `src/types/`에 정의하고 재사용한다.
+3. 함수명은 동사로 시작한다. (예: `fetchPosts`, `handleSubmit`, `formatDeadline`)
+4. 이벤트 핸들러는 `handle` 접두사를 사용한다. (예: `handleLogin`, `handleBookmarkToggle`)
+5. TanStack Query의 커스텀 훅은 `use` 접두사를 사용한다. (예: `usePosts`, `usePostDetail`)
+6. 컴포넌트 내 조건부 렌더링은 가독성을 위해 삼항 연산자보다 `&&` 또는 별도 변수를 우선한다.
+7. 불필요한 `useEffect` 사용을 피한다. 서버 데이터는 TanStack Query로 관리한다.
